@@ -18,6 +18,7 @@ using System.IdentityModel.Tokens.Jwt;
 using OpenIdClientForNet.Helpers;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using static IdentityModel.OidcConstants;
 
 [assembly: OwinStartup(typeof(OpenIdClientForNet.App_Start.Startup))]
 namespace OpenIdClientForNet.App_Start
@@ -32,7 +33,7 @@ namespace OpenIdClientForNet.App_Start
             var authority = ConfigurationManager.AppSettings["Authority"];
             var redirectUri = ConfigurationManager.AppSettings["RedirectUri"];
             var postLogoutRedirectUri = ConfigurationManager.AppSettings["PostLogoutRedirectUri"];
-            
+
             var tokenValidationParameters = new TokenValidationParameters
             {
                 ValidateIssuerSigningKey = false, // Anahtar imzasını doğrulama
@@ -63,69 +64,50 @@ namespace OpenIdClientForNet.App_Start
                 SignInAsAuthenticationType = "Cookies",
                 SaveTokens = false,
                 RedeemCode = true,
-                MetadataAddress = "https://localhost:5001/.well-known/openid-configuration",               
+                MetadataAddress = "https://localhost:5001/.well-known/openid-configuration",
                 Notifications = new OpenIdConnectAuthenticationNotifications
                 {
                     RedirectToIdentityProvider = n =>
                     {
                         if (n.ProtocolMessage.RequestType == OpenIdConnectRequestType.Logout)
                         {
-                            var idTokenHint = n.OwinContext.Authentication.User.FindFirst("id_token").Value;
-                            n.ProtocolMessage.IdTokenHint = idTokenHint;
+                            var idTokenClaim = n.OwinContext.Authentication.User.FindFirst("id_token");
+                            if (idTokenClaim != null)
+                            {
+                                n.ProtocolMessage.IdTokenHint = idTokenClaim.Value;
+                            }
+                            n.ProtocolMessage.PostLogoutRedirectUri = postLogoutRedirectUri;
                         }
                         return Task.FromResult(0);
                     },
-                    //AuthorizationCodeReceived = async n =>
-                    //{
-                    //    // PKCE için code_verifier oluştur
-                    //    var codeVerifier = PKCEGenerator.GenerateCodeVerifier();
-                    //    var codeChallenge = PKCEGenerator.GenerateCodeChallenge(codeVerifier);
+                //    AuthorizationCodeReceived = async n =>
+                //    {
+                //        using (var client = new HttpClient())
+                //        {
+                //            var tokenEndpoint = $"{n.Options.Authority}/connect/token";
+                //            var parameters = new Dictionary<string, string>
+                //{
+                //    { "client_id", n.Options.ClientId },
+                //    { "client_secret", n.Options.ClientSecret },
+                //    { "code", n.Code },
+                //    { "redirect_uri", n.Options.RedirectUri },
+                //    { "grant_type", "authorization_code" }
+                //};
 
-                    //    // Daha sonra code_challenge ile token isteği yapabilirsiniz
-                    //    var tokenEndpoint = "https://localhost:5001/connect/token";
-                    //    var parameters = new Dictionary<string, string>
-                    //        {
-                    //            { "client_id", clientId },
-                    //            { "client_secret", clientSecret },
-                    //            { "code", n.Code },
-                    //            { "redirect_uri", redirectUri },
-                    //            { "code_verifier", codeVerifier },
-                    //            { "code_challenge", codeChallenge },
-                    //            { "grant_type", "authorization_code" }
-                    //        };
+                //            var content = new FormUrlEncodedContent(parameters);
+                //            var response = await client.PostAsync(tokenEndpoint, content);
+                //            response.EnsureSuccessStatusCode();
 
-                    //    var content = new FormUrlEncodedContent(parameters);
+                //            var responseContent = await response.Content.ReadAsStringAsync();
+                //            var tokenResponse = JsonConvert.DeserializeObject<TokenResponse>(responseContent);
 
-                    //    using (var client = new HttpClient())
-                    //    {
-                    //        var response = await client.PostAsync(tokenEndpoint, content);
-                    //        if (response.IsSuccessStatusCode)
-                    //        {
-                    //            var responseContent = await response.Content.ReadAsStringAsync();
-                    //            var tokenResponse = JsonConvert.DeserializeObject<TokenResponse>(responseContent);
+                //            n.AuthenticationTicket.Identity.AddClaim(new Claim("id_token", tokenResponse.IdentityToken));
+                //            n.AuthenticationTicket.Identity.AddClaim(new Claim("access_token", tokenResponse.AccessToken));
 
-                    //            var userInfoEndpoint = "https://localhost:5001/connect/userinfo";
-
-                    //            var userInfoRequest = new UserInfoRequest
-                    //            {
-                    //                Address = userInfoEndpoint,
-                    //                Token = tokenResponse.AccessToken
-                    //            };
-
-                    //            var userInfoResponse = await client.GetUserInfoAsync(userInfoRequest);
-
-                    //            var identity = new ClaimsIdentity(n.AuthenticationTicket.Identity.AuthenticationType);
-                    //            identity.AddClaims(userInfoResponse.Claims);
-
-                    //            n.AuthenticationTicket = new AuthenticationTicket(identity, n.AuthenticationTicket.Properties);
-                    //        }
-                    //        else
-                    //        {
-                    //            var errorResponse = await response.Content.ReadAsStringAsync();
-                    //            throw new Exception($"Token request failed: {errorResponse}");
-                    //        }
-                    //    }
-                    //},
+                //            n.AuthenticationTicket.Properties.Dictionary["id_token"] = tokenResponse.IdentityToken;
+                //            n.AuthenticationTicket.Properties.Dictionary["access_token"] = tokenResponse.AccessToken;
+                //        }
+                //    },
                     AuthenticationFailed = n =>
                     {
                         // Hata mesajını loglama
@@ -153,6 +135,8 @@ namespace OpenIdClientForNet.App_Start
 
                         n.AuthenticationTicket = new AuthenticationTicket(identity, n.AuthenticationTicket.Properties);
                         // accessToken'ı kullanmak için yapılacak işlemler
+                        n.AuthenticationTicket.Properties.Dictionary["id_token"] = n.ProtocolMessage.IdToken;
+                        n.AuthenticationTicket.Properties.Dictionary["access_token"] = n.ProtocolMessage.AccessToken;
                     }
                 },
                 Configuration = new Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectConfiguration
@@ -174,6 +158,9 @@ namespace OpenIdClientForNet.App_Start
                 context.Set<TokenValidationParameters>("TokenValidationParameters", tokenValidationParameters);
                 await next.Invoke();
             });
+
+
         }
+
     }
 }

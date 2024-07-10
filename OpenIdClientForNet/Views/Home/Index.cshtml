@@ -44,4 +44,8 @@
             <p><a class="btn btn-outline-dark" href="https://go.microsoft.com/fwlink/?LinkId=301865">Learn more &raquo;</a></p>
         </section>
     </div>
+    @if (Request.IsAuthenticated)
+    {
+        <p><a href="@Url.Action("Logout", "Account")" class="btn btn-danger">Logout</a></p>
+    }
 </main>

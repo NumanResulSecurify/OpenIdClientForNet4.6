@@ -1,8 +1,10 @@
-﻿using Microsoft.Owin.Security.Cookies;
+﻿using Microsoft.Owin.Security;
+using Microsoft.Owin.Security.Cookies;
 using Microsoft.Owin.Security.OpenIdConnect;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
 
@@ -21,22 +23,29 @@ namespace OpenIdClientForNet.Controllers
             }
         }
 
-        // Çıkış yapma işlemi
-        public void SignOut()
+        // Çıkış yapma işlem    
+        public ActionResult Logout()
         {
-            HttpContext.GetOwinContext().Authentication.SignOut(
-                OpenIdConnectAuthenticationDefaults.AuthenticationType,
-                CookieAuthenticationDefaults.AuthenticationType);
+            var authentication = HttpContext.GetOwinContext().Authentication;
+            var idToken = GetToken("id_token");
+
+            var properties = new AuthenticationProperties
+            {
+                RedirectUri = Url.Action("Index", "Home")
+            };
+
+            properties.Dictionary["id_token_hint"] = idToken;
+            properties.Dictionary["post_logout_redirect_uri"] = Url.Action("Index", "Home", null, Request.Url.Scheme);
+
+            authentication.SignOut(properties, OpenIdConnectAuthenticationDefaults.AuthenticationType, CookieAuthenticationDefaults.AuthenticationType);
+            return new EmptyResult();
         }
 
-        // Çıkış yapıldıktan sonra yönlendirilecek sayfa
-        public ActionResult SignOutCallback()
+        private string GetToken(string tokenType)
         {
-            if (!Request.IsAuthenticated)
-            {
-                return RedirectToAction("Index", "Home");
-            }
-            return View();
+            var result = HttpContext.GetOwinContext().Authentication.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationType).Result;
+            return result?.Properties?.Dictionary.ContainsKey(tokenType) == true ? result.Properties.Dictionary[tokenType] : null;
         }
+
     }
 }
